@@ -32,6 +32,7 @@
     "hw": "bun scripts/hw.ts",
     "dev": "bun scripts/dev.ts",
     "wasm": "bun scripts/wasm.ts",
+    "sdl": "cargo run --manifest-path pocket3d/Cargo.toml -p sdlhost --",
     "gba:imagegen": "bun imagegen",
     "serve": "bun host-web/serve.ts",
     "golden": "bun test/golden.ts",

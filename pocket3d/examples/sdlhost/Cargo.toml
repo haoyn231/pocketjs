@@ -1,0 +1,16 @@
+[package]
+name = "sdlhost"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "PocketJS UI demos in an SDL2 software-rendered Linux window"
+
+[dependencies]
+pocket-mod = { workspace = true }
+pocket-ui-soft = { workspace = true }
+pocket-ui-wgpu = { workspace = true }
+anyhow = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+sdl2 = { workspace = true }

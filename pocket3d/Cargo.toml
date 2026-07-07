@@ -4,7 +4,9 @@ members = [
     "crates/pocket3d",
     "crates/pocket3d-bsp",
     "crates/pocket-mod",
+    "crates/pocket-ui-soft",
     "crates/pocket-ui-wgpu",
+    "examples/sdlhost",
     "examples/uihost",
 ]
 
@@ -18,12 +20,14 @@ repository = "https://github.com/pocketjs/pocketjs"
 pocket3d = { path = "crates/pocket3d" }
 pocket3d-bsp = { path = "crates/pocket3d-bsp" }
 pocket-mod = { path = "crates/pocket-mod" }
+pocket-ui-soft = { path = "crates/pocket-ui-soft" }
 pocket-ui-wgpu = { path = "crates/pocket-ui-wgpu" }
 pocketjs-core = { path = "../core", features = ["std"] }
 rquickjs = "0.12"
 
 wgpu = "25"
 winit = "0.30"
+sdl2 = "0.38"
 glam = "0.33"
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "0.4"

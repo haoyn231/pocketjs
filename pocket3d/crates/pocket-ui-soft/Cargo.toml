@@ -1,0 +1,10 @@
+[package]
+name = "pocket-ui-soft"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Software DrawList renderer for PocketJS UI hosts"
+
+[dependencies]
+pocketjs-core = { workspace = true }

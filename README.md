@@ -101,6 +101,7 @@ required router package.
 bun run test                          # spec contract + tailwind parser tests
 bun scripts/build.ts <app> [--framework=solid|vue-vapor] [--extra-chars=…]
 bun run psp / bun run dev / bun run wasm      # EBOOT / web host / wasm core
+bun run sdl -- --app hero-main        # Linux SDL2 software-rendered host
 bun psplink                           # interactive real PSP switcher over PSPLINK
 bun run hw hero --trace              # real PSP via PSPLINK + host0 trace
 bunx tsc --noEmit                     # typecheck (babel owns the JSX transform)
