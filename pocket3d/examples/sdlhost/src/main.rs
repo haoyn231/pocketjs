@@ -18,8 +18,6 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
 use sdl2::pixels::PixelFormatEnum;
-use sdl2::render::Canvas;
-use sdl2::video::Window;
 
 const UI_W: u32 = 480;
 const UI_H: u32 = 272;
@@ -168,14 +166,11 @@ fn button_for(key: Keycode) -> Option<u32> {
     })
 }
 
-fn window_to_ui(canvas: &Canvas<Window>, x: i32, y: i32) -> (f64, f64) {
-    let (ww, wh) = canvas.window().size();
-    let sx = ww as f64 / UI_W as f64;
-    let sy = wh as f64 / UI_H as f64;
-    let scale = sx.min(sy).max(0.0001);
-    let vx = (ww as f64 - UI_W as f64 * scale) * 0.5;
-    let vy = (wh as f64 - UI_H as f64 * scale) * 0.5;
-    ((x as f64 - vx) / scale, (y as f64 - vy) / scale)
+fn event_to_ui(x: i32, y: i32) -> (f64, f64) {
+    // set_logical_size() makes SDL mouse events arrive in the same logical
+    // coordinate space that the renderer presents, so no window-scale math is
+    // needed here.
+    (x as f64, y as f64)
 }
 
 fn dispatch_pointer(
@@ -263,11 +258,11 @@ fn main() -> Result<()> {
                     ..
                 } => {
                     pointer_buttons |= POINTER_PRIMARY;
-                    let (ux, uy) = window_to_ui(&canvas, x, y);
+                    let (ux, uy) = event_to_ui(x, y);
                     dispatch_pointer(&guest, "mouse", "down", 0, ux, uy, 0, pointer_buttons)?;
                 }
                 Event::MouseMotion { x, y, .. } => {
-                    let (ux, uy) = window_to_ui(&canvas, x, y);
+                    let (ux, uy) = event_to_ui(x, y);
                     dispatch_pointer(&guest, "mouse", "move", 0, ux, uy, 0, pointer_buttons)?;
                 }
                 Event::MouseButtonUp {
@@ -277,7 +272,7 @@ fn main() -> Result<()> {
                     ..
                 } => {
                     pointer_buttons &= !POINTER_PRIMARY;
-                    let (ux, uy) = window_to_ui(&canvas, x, y);
+                    let (ux, uy) = event_to_ui(x, y);
                     dispatch_pointer(&guest, "mouse", "up", 0, ux, uy, 0, pointer_buttons)?;
                 }
                 _ => {}
