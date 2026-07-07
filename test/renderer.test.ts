@@ -47,6 +47,8 @@ import {
   getFocused,
   focusNode,
   handleFrame,
+  handlePointer,
+  hitTestPointer,
   pushFocusGrid,
   pushFocusScope,
   resetInput,
@@ -72,6 +74,7 @@ const comp = createComponent as (fn: unknown, props: unknown) => NodeMirror;
 
 interface MockHost extends Host {
   calls: Call[];
+  layout: Map<number, [number, number, number, number]>;
   /** calls filtered by op name(s) */
   of(...names: string[]): Call[];
   clear(): void;
@@ -80,6 +83,7 @@ interface MockHost extends Host {
 
 function makeMockHost(strict = true): MockHost {
   const calls: Call[] = [];
+  const layout = new Map<number, [number, number, number, number]>([[ROOT_ID, [0, 0, 480, 272]]]);
   let nextId = ROOT_ID + 1;
   const alive = new Set<number>([ROOT_ID]);
   const rec =
@@ -119,12 +123,25 @@ function makeMockHost(strict = true): MockHost {
     loadStyles: rec("loadStyles"),
     loadFontAtlas: rec("loadFontAtlas"),
     measureText: () => 0,
+    __layoutX(id: number) {
+      return layout.get(id)?.[0] ?? Number.NaN;
+    },
+    __layoutY(id: number) {
+      return layout.get(id)?.[1] ?? Number.NaN;
+    },
+    __layoutW(id: number) {
+      return layout.get(id)?.[2] ?? Number.NaN;
+    },
+    __layoutH(id: number) {
+      return layout.get(id)?.[3] ?? Number.NaN;
+    },
   };
   return {
     ops,
     kind: "injected",
     strict,
     calls,
+    layout,
     alive,
     of(...names: string[]) {
       return calls.filter((c) => names.includes(c[0] as string));
@@ -142,6 +159,10 @@ function freshRoot(): NodeMirror {
 /** Ids of a mirror node's children, in order. */
 function childIds(node: NodeMirror): number[] {
   return node.children.map((c) => c.id);
+}
+
+function setLayout(node: NodeMirror, x: number, y: number, w: number, h: number): void {
+  host.layout.set(node.id, [x, y, w, h]);
 }
 
 let host: MockHost;
@@ -715,6 +736,120 @@ describe("focus + onPress (input.ts)", () => {
     expect(getFocused()).toBe(cells[4]);
 
     releaseGrid();
+  });
+});
+
+describe("pointer input (input.ts)", () => {
+  test("pointer down/up focuses and fires press on the hit node", () => {
+    setInputRoot(root);
+    let presses = 0;
+    const phases: string[] = [];
+    let button!: NodeMirror;
+
+    const dispose = render(() => {
+      button = createElement("view");
+      setProp(button, "focusable", true, undefined);
+      setProp(button, "onPress", () => presses++, undefined);
+      setProp(button, "onPointerDown", (ev: { phase: string }) => phases.push(ev.phase), undefined);
+      setProp(button, "onPointerUp", (ev: { phase: string }) => phases.push(ev.phase), undefined);
+      return button;
+    }, root);
+    setLayout(button, 20, 30, 120, 50);
+
+    expect(hitTestPointer(30, 40)).toBe(button);
+    handlePointer("mouse", "down", 0, 30, 40, 0, 1);
+    expect(getFocused()).toBe(button);
+    expect(host.of("setFocus").at(-1)).toEqual(["setFocus", button.id]);
+    handlePointer("mouse", "up", 0, 30, 40, 0, 0);
+
+    expect(phases).toEqual(["down", "up"]);
+    expect(presses).toBe(1);
+    dispose();
+  });
+
+  test("moving outside the press target cancels click but still sends up", () => {
+    setInputRoot(root);
+    let presses = 0;
+    const phases: string[] = [];
+    let button!: NodeMirror;
+
+    const dispose = render(() => {
+      button = createElement("view");
+      setProp(button, "focusable", true, undefined);
+      setProp(button, "onPress", () => presses++, undefined);
+      setProp(button, "onPointerMove", (ev: { inside: boolean }) => phases.push(String(ev.inside)), undefined);
+      setProp(button, "onPointerUp", () => phases.push("up"), undefined);
+      return button;
+    }, root);
+    setLayout(button, 20, 30, 120, 50);
+
+    handlePointer("mouse", "down", 0, 30, 40, 0, 1);
+    handlePointer("mouse", "move", 0, 200, 120, 0, 1);
+    handlePointer("mouse", "up", 0, 200, 120, 0, 0);
+
+    expect(phases).toEqual(["false", "up"]);
+    expect(presses).toBe(0);
+    dispose();
+  });
+
+  test("long press fires once and suppresses regular press on release", () => {
+    setInputRoot(root);
+    let presses = 0;
+    let longPresses = 0;
+    let button!: NodeMirror;
+
+    const dispose = render(() => {
+      button = createElement("view");
+      setProp(button, "focusable", true, undefined);
+      setProp(button, "onPress", () => presses++, undefined);
+      setProp(button, "onLongPress", () => longPresses++, undefined);
+      return button;
+    }, root);
+    setLayout(button, 20, 30, 120, 50);
+
+    handlePointer("mouse", "down", 0, 30, 40, 0, 1);
+    for (let i = 0; i < 35; i++) handleFrame(0);
+    handlePointer("mouse", "up", 0, 30, 40, 0, 0);
+
+    expect(longPresses).toBe(1);
+    expect(presses).toBe(0);
+    dispose();
+  });
+
+  test("hit testing prefers later overlay siblings over app content", () => {
+    setInputRoot(root);
+    const app = createElement("view");
+    const overlay = createElement("view");
+    insertNode(root, app);
+    insertNode(root, overlay);
+    const appButton = createElement("view");
+    const overlayButton = createElement("view");
+    setProp(appButton, "focusable", true, undefined);
+    setProp(overlayButton, "focusable", true, undefined);
+    insertNode(app, appButton);
+    insertNode(overlay, overlayButton);
+    setLayout(app, 0, 0, 480, 272);
+    setLayout(overlay, 0, 0, 480, 272);
+    setLayout(appButton, 10, 10, 100, 100);
+    setLayout(overlayButton, 10, 10, 100, 100);
+
+    expect(hitTestPointer(20, 20)).toBe(overlayButton);
+  });
+
+  test("empty overlay containers do not block app hit testing", () => {
+    setInputRoot(root);
+    const app = createElement("view");
+    const overlay = createElement("view");
+    insertNode(root, app);
+    insertNode(root, overlay);
+    const appButton = createElement("view");
+    setProp(appButton, "focusable", true, undefined);
+    insertNode(app, appButton);
+    setLayout(app, 0, 0, 480, 272);
+    setLayout(overlay, 0, 0, 480, 272);
+    setLayout(appButton, 10, 10, 100, 100);
+
+    expect(hitTestPointer(20, 20)).toBe(appButton);
   });
 });
 

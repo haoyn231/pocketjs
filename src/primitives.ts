@@ -8,6 +8,7 @@
 import type { JSX as SolidJSX } from "solid-js";
 import { createElement, spread } from "./renderer.ts";
 import type { NodeMirror } from "./renderer.ts";
+import type { PointerHandler } from "./input.ts";
 
 type StyleObject = Record<string, number | string>;
 type RefProp =
@@ -20,6 +21,11 @@ export interface ViewProps {
   class?: string;
   style?: StyleObject;
   onPress?: () => void;
+  onPointerDown?: PointerHandler;
+  onPointerMove?: PointerHandler;
+  onPointerUp?: PointerHandler;
+  onPointerCancel?: PointerHandler;
+  onLongPress?: PointerHandler;
   focusable?: boolean;
   ref?: RefProp;
   nodeRef?: RefProp;
@@ -29,6 +35,11 @@ export interface ViewProps {
 export interface TextProps {
   class?: string;
   style?: StyleObject;
+  onPointerDown?: PointerHandler;
+  onPointerMove?: PointerHandler;
+  onPointerUp?: PointerHandler;
+  onPointerCancel?: PointerHandler;
+  onLongPress?: PointerHandler;
   ref?: RefProp;
   nodeRef?: RefProp;
   children?: SolidJSX.Element;
@@ -38,6 +49,11 @@ export interface ImageProps {
   class?: string;
   src?: string;
   style?: StyleObject;
+  onPointerDown?: PointerHandler;
+  onPointerMove?: PointerHandler;
+  onPointerUp?: PointerHandler;
+  onPointerCancel?: PointerHandler;
+  onLongPress?: PointerHandler;
   ref?: RefProp;
   nodeRef?: RefProp;
 }

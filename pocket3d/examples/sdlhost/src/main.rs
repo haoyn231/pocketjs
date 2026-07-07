@@ -12,10 +12,14 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 use pocket_mod::Guest;
+use pocket_mod::qjs::Function;
 use pocket_ui_wgpu::UiSurface;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
+use sdl2::mouse::MouseButton;
 use sdl2::pixels::PixelFormatEnum;
+use sdl2::render::Canvas;
+use sdl2::video::Window;
 
 const UI_W: u32 = 480;
 const UI_H: u32 = 272;
@@ -33,6 +37,7 @@ const BTN_TRIANGLE: u32 = 0x1000;
 const BTN_CIRCLE: u32 = 0x2000;
 const BTN_CROSS: u32 = 0x4000;
 const BTN_SQUARE: u32 = 0x8000;
+const POINTER_PRIMARY: u32 = 0x01;
 
 struct Args {
     app: String,
@@ -163,6 +168,35 @@ fn button_for(key: Keycode) -> Option<u32> {
     })
 }
 
+fn window_to_ui(canvas: &Canvas<Window>, x: i32, y: i32) -> (f64, f64) {
+    let (ww, wh) = canvas.window().size();
+    let sx = ww as f64 / UI_W as f64;
+    let sy = wh as f64 / UI_H as f64;
+    let scale = sx.min(sy).max(0.0001);
+    let vx = (ww as f64 - UI_W as f64 * scale) * 0.5;
+    let vy = (wh as f64 - UI_H as f64 * scale) * 0.5;
+    ((x as f64 - vx) / scale, (y as f64 - vy) / scale)
+}
+
+fn dispatch_pointer(
+    guest: &Guest,
+    source: &str,
+    phase: &str,
+    id: i32,
+    x: f64,
+    y: f64,
+    button: i32,
+    buttons: u32,
+) -> Result<()> {
+    guest.with(|ctx| -> Result<()> {
+        let pointer: Option<Function> = ctx.globals().get("__pocketjsPointer").ok();
+        if let Some(pointer) = pointer {
+            pointer.call::<_, ()>((source, phase, id, x, y, button, buttons))?;
+        }
+        Ok(())
+    })
+}
+
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let args = parse_args()?;
@@ -192,6 +226,7 @@ fn main() -> Result<()> {
     let mut events = sdl.event_pump().map_err(|e| anyhow!("sdl events: {e}"))?;
     let mut framebuffer = vec![0u8; (UI_W * UI_H * 4) as usize];
     let mut buttons = 0u32;
+    let mut pointer_buttons = 0u32;
     let started = Instant::now();
     let mut next_frame = Instant::now();
 
@@ -220,6 +255,30 @@ fn main() -> Result<()> {
                     if let Some(bit) = button_for(key) {
                         buttons &= !bit;
                     }
+                }
+                Event::MouseButtonDown {
+                    mouse_btn: MouseButton::Left,
+                    x,
+                    y,
+                    ..
+                } => {
+                    pointer_buttons |= POINTER_PRIMARY;
+                    let (ux, uy) = window_to_ui(&canvas, x, y);
+                    dispatch_pointer(&guest, "mouse", "down", 0, ux, uy, 0, pointer_buttons)?;
+                }
+                Event::MouseMotion { x, y, .. } => {
+                    let (ux, uy) = window_to_ui(&canvas, x, y);
+                    dispatch_pointer(&guest, "mouse", "move", 0, ux, uy, 0, pointer_buttons)?;
+                }
+                Event::MouseButtonUp {
+                    mouse_btn: MouseButton::Left,
+                    x,
+                    y,
+                    ..
+                } => {
+                    pointer_buttons &= !POINTER_PRIMARY;
+                    let (ux, uy) = window_to_ui(&canvas, x, y);
+                    dispatch_pointer(&guest, "mouse", "up", 0, ux, uy, 0, pointer_buttons)?;
                 }
                 _ => {}
             }

@@ -2,7 +2,7 @@
 
 import "./prelude.ts";
 
-import { detectHost, installFrameHandler, installHost, type HostOps } from "./host.ts";
+import { detectHost, installFrameHandler, installHost, installPointerHandler, type HostOps } from "./host.ts";
 import {
   createElement,
   registerSprite as rendererRegisterSprite,
@@ -17,7 +17,7 @@ import {
 } from "./renderer-vue-vapor.ts";
 import { setOverlayRoot } from "./overlay.ts";
 import { registerStyles, resolveStyle } from "./styles.ts";
-import { handleFrame, setInputRoot } from "./input.ts";
+import { handleFrame, handlePointer, setInputRoot } from "./input.ts";
 import { resetFrameHooks, runFrameHooks } from "./frame-vue-vapor.ts";
 import { entries as pakEntries, get as pakGet, hasPack, loadPack } from "./pak.ts";
 import { STYLE_IDS as DEFAULT_STYLE_IDS } from "./styles.generated.ts";
@@ -145,6 +145,7 @@ export function render(code: () => unknown, opts: RenderOptions = {}): () => voi
     handleFrame(buttons);
     runSweep();
   });
+  installPointerHandler(handlePointer);
 
   const dispose = rendererRender(code, appRoot);
   return () => {

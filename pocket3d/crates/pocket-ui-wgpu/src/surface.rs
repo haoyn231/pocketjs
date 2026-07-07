@@ -215,6 +215,34 @@ impl UiSurface {
                 ui.borrow_mut().ui.measure_text(&s.0, slot as u8) as f64
             });
 
+            let ui = self.inner.clone();
+            op!("__layoutX", move |id: i32| {
+                let mut inner = ui.borrow_mut();
+                inner.ui.draw();
+                inner.ui.layout_of(id).map(|r| r.0 as f64).unwrap_or(f64::NAN)
+            });
+
+            let ui = self.inner.clone();
+            op!("__layoutY", move |id: i32| {
+                let mut inner = ui.borrow_mut();
+                inner.ui.draw();
+                inner.ui.layout_of(id).map(|r| r.1 as f64).unwrap_or(f64::NAN)
+            });
+
+            let ui = self.inner.clone();
+            op!("__layoutW", move |id: i32| {
+                let mut inner = ui.borrow_mut();
+                inner.ui.draw();
+                inner.ui.layout_of(id).map(|r| r.2 as f64).unwrap_or(f64::NAN)
+            });
+
+            let ui = self.inner.clone();
+            op!("__layoutH", move |id: i32| {
+                let mut inner = ui.borrow_mut();
+                inner.ui.draw();
+                inner.ui.layout_of(id).map(|r| r.3 as f64).unwrap_or(f64::NAN)
+            });
+
             // ---- boot tables (PSP contract) + desktop viewport ----------
             let inner = self.inner.borrow();
             let textures = Object::new(ctx.clone())?;

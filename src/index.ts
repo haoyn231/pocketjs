@@ -16,7 +16,7 @@ if (typeof (globalThis as { queueMicrotask?: unknown }).queueMicrotask !== "func
   };
 }
 
-import { detectHost, installFrameHandler, installHost, type HostOps } from "./host.ts";
+import { detectHost, installFrameHandler, installHost, installPointerHandler, type HostOps } from "./host.ts";
 import {
   createElement,
   registerTexture as rendererRegisterTexture,
@@ -31,7 +31,7 @@ import {
 } from "./renderer.ts";
 import { setOverlayRoot } from "./overlay.ts";
 import { registerStyles, resolveStyle } from "./styles.ts";
-import { handleFrame, setInputRoot } from "./input.ts";
+import { handleFrame, handlePointer, setInputRoot } from "./input.ts";
 import { resetFrameHooks, runFrameHooks } from "./frame.ts";
 import { entries as pakEntries, get as pakGet, hasPack, loadPack } from "./pak.ts";
 import { STYLE_IDS as DEFAULT_STYLE_IDS } from "./styles.generated.ts";
@@ -190,6 +190,7 @@ export function render(code: () => unknown, opts: RenderOptions = {}): () => voi
     handleFrame(buttons); // edge-detect, focus nav, onPress (runs effects)
     runSweep(); // then destroy subtrees still detached [R]
   });
+  installPointerHandler(handlePointer);
 
   const dispose = rendererRender(code as () => NodeMirror, appRoot);
   return () => {

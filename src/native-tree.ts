@@ -3,7 +3,8 @@
 
 import { NODE_TYPE, PROP, ROOT_ID, STYLE_ID_NONE, type PropName } from "../spec/spec.ts";
 import { encodePropValue, getHost, getOps } from "./host.ts";
-import { notifyDetached, registerFocusable, registerPress } from "./input.ts";
+import { notifyDetached, registerFocusable, registerPointerHandler, registerPress } from "./input.ts";
+import type { PointerHandler } from "./input.ts";
 
 export interface NodeMirror {
   /** Native generation-tagged node id. */
@@ -26,6 +27,11 @@ export interface NodeMirror {
   focusable?: boolean;
   /** CIRCLE handler while focused (input.ts). */
   onPress?: (() => void) | undefined;
+  onPointerDown?: PointerHandler | undefined;
+  onPointerMove?: PointerHandler | undefined;
+  onPointerUp?: PointerHandler | undefined;
+  onPointerCancel?: PointerHandler | undefined;
+  onLongPress?: PointerHandler | undefined;
 }
 
 /** Mirror of the pre-created native root (full-screen flex column, id 1). */
@@ -571,6 +577,26 @@ export function setProp<T>(node: NodeMirror, name: string, value: T, prev?: T): 
     case "onPress":
     case "on:press":
       registerPress(node, value as (() => void) | undefined);
+      return value;
+    case "onPointerDown":
+    case "on:pointerdown":
+      registerPointerHandler(node, "onPointerDown", value as PointerHandler | undefined);
+      return value;
+    case "onPointerMove":
+    case "on:pointermove":
+      registerPointerHandler(node, "onPointerMove", value as PointerHandler | undefined);
+      return value;
+    case "onPointerUp":
+    case "on:pointerup":
+      registerPointerHandler(node, "onPointerUp", value as PointerHandler | undefined);
+      return value;
+    case "onPointerCancel":
+    case "on:pointercancel":
+      registerPointerHandler(node, "onPointerCancel", value as PointerHandler | undefined);
+      return value;
+    case "onLongPress":
+    case "on:longpress":
+      registerPointerHandler(node, "onLongPress", value as PointerHandler | undefined);
       return value;
     case "src":
       setSrc(node, value);

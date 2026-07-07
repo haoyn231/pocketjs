@@ -15,22 +15,62 @@
 //     `focus:` style variant with zero further JS.
 
 import { BTN } from "../spec/spec.ts";
-import { getOps } from "./host.ts";
+import { getOps, type PointerPhase, type PointerSource } from "./host.ts";
 import type { NodeMirror } from "./renderer.ts";
+
+export interface PointerEvent {
+  source: PointerSource;
+  phase: PointerPhase | "longpress";
+  id: number;
+  x: number;
+  y: number;
+  startX: number;
+  startY: number;
+  button: number;
+  buttons: number;
+  target: NodeMirror;
+  currentTarget: NodeMirror;
+  inside: boolean;
+}
+
+export type PointerHandler = (event: PointerEvent) => void;
 
 let root: NodeMirror | null = null;
 let focused: NodeMirror | null = null;
 let prevButtons = 0;
+let frameIndex = 0;
 const focusScopeStack: NodeMirror[] = [];
 const focusGridStack: FocusGridRegistration[] = [];
+const activePointers = new Map<number, ActivePointer>();
+
+const LONG_PRESS_FRAMES = 30;
+const POINTER_SLOP_PX = 8;
+
+interface ActivePointer {
+  source: PointerSource;
+  id: number;
+  target: NodeMirror;
+  pressTarget: NodeMirror | null;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  button: number;
+  buttons: number;
+  downFrame: number;
+  canceled: boolean;
+  longFired: boolean;
+}
 
 /** Bind the focus manager to a mirror tree root (index.ts render()). */
 export function setInputRoot(r: NodeMirror | null): void {
   root = r;
   focused = null;
   prevButtons = 0;
+  frameIndex = 0;
   focusScopeStack.length = 0;
   focusGridStack.length = 0;
+  activePointers.clear();
 }
 
 /** Tests: forget focus + edge state. */
@@ -45,6 +85,19 @@ export function registerPress(
   fn: (() => void) | undefined | null,
 ): void {
   node.onPress = fn ?? undefined;
+}
+
+export function registerPointerHandler(
+  node: NodeMirror,
+  name:
+    | "onPointerDown"
+    | "onPointerMove"
+    | "onPointerUp"
+    | "onPointerCancel"
+    | "onLongPress",
+  fn: PointerHandler | undefined | null,
+): void {
+  node[name] = fn ?? undefined;
 }
 
 export function registerFocusable(node: NodeMirror, on: boolean): void {
@@ -195,6 +248,17 @@ function firePress(): void {
   }
 }
 
+function firePressAt(node: NodeMirror | null): void {
+  let n = node;
+  while (n) {
+    if (n.onPress) {
+      n.onPress();
+      return;
+    }
+    n = n.parent;
+  }
+}
+
 // ---- removal repair [R] ------------------------------------------------------
 
 function isWithin(node: NodeMirror, ancestor: NodeMirror): boolean {
@@ -221,6 +285,244 @@ function firstFocusable(node: NodeMirror): NodeMirror | null {
     if (f) return f;
   }
   return null;
+}
+
+function firstFocusableAncestor(node: NodeMirror | null): NodeMirror | null {
+  let n = node;
+  while (n) {
+    if (n.focusable) return n;
+    n = n.parent;
+  }
+  return null;
+}
+
+function firstPressAncestor(node: NodeMirror | null): NodeMirror | null {
+  let n = node;
+  while (n) {
+    if (n.onPress || n.onLongPress || n.focusable) return n;
+    n = n.parent;
+  }
+  return null;
+}
+
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+function localRect(node: NodeMirror): Rect | null {
+  const ops = getOps();
+  if (!ops.__layoutX || !ops.__layoutY || !ops.__layoutW || !ops.__layoutH) return null;
+  const x = ops.__layoutX(node.id);
+  const y = ops.__layoutY(node.id);
+  const w = ops.__layoutW(node.id);
+  const h = ops.__layoutH(node.id);
+  if (![x, y, w, h].every(Number.isFinite) || w <= 0 || h <= 0) return null;
+  return { x, y, w, h };
+}
+
+function globalRect(node: NodeMirror): Rect | null {
+  const own = localRect(node);
+  if (!own) return null;
+  let x = own.x;
+  let y = own.y;
+  const w = own.w;
+  const h = own.h;
+  let n: NodeMirror | null = node;
+  n = n.parent;
+  while (n) {
+    const r = localRect(n);
+    if (r) {
+      x += r.x;
+      y += r.y;
+    }
+    n = n.parent;
+  }
+  return { x, y, w, h };
+}
+
+function rectContains(rect: Rect, x: number, y: number): boolean {
+  return x >= rect.x && y >= rect.y && x < rect.x + rect.w && y < rect.y + rect.h;
+}
+
+function containsPoint(node: NodeMirror | null, x: number, y: number): boolean {
+  if (!node) return false;
+  const rect = globalRect(node);
+  return !!rect && rectContains(rect, x, y);
+}
+
+function pointerSearchRoot(): NodeMirror | null {
+  return root?.parent ?? root;
+}
+
+function isPointerRelevant(node: NodeMirror): boolean {
+  return !!(
+    node.focusable ||
+    node.onPress ||
+    node.onPointerDown ||
+    node.onPointerMove ||
+    node.onPointerUp ||
+    node.onPointerCancel ||
+    node.onLongPress
+  );
+}
+
+function hitTestNode(node: NodeMirror, x: number, y: number): NodeMirror | null {
+  const rect = globalRect(node);
+  if (rect && !rectContains(rect, x, y)) return null;
+  for (let i = node.children.length - 1; i >= 0; i--) {
+    const hit = hitTestNode(node.children[i], x, y);
+    if (hit) return hit;
+  }
+  return rect && isPointerRelevant(node) ? node : null;
+}
+
+export function hitTestPointer(x: number, y: number): NodeMirror | null {
+  const r = pointerSearchRoot();
+  return r ? hitTestNode(r, x, y) : null;
+}
+
+function dispatchPointer(
+  name:
+    | "onPointerDown"
+    | "onPointerMove"
+    | "onPointerUp"
+    | "onPointerCancel"
+    | "onLongPress",
+  target: NodeMirror,
+  pointer: ActivePointer,
+  phase: PointerEvent["phase"],
+  inside: boolean,
+): void {
+  let n: NodeMirror | null = target;
+  while (n) {
+    const fn = n[name];
+    if (fn) {
+      fn({
+        source: pointer.source,
+        phase,
+        id: pointer.id,
+        x: pointer.x,
+        y: pointer.y,
+        startX: pointer.startX,
+        startY: pointer.startY,
+        button: pointer.button,
+        buttons: pointer.buttons,
+        target,
+        currentTarget: n,
+        inside,
+      });
+    }
+    n = n.parent;
+  }
+}
+
+function pointerMovedPastSlop(pointer: ActivePointer): boolean {
+  const dx = pointer.x - pointer.startX;
+  const dy = pointer.y - pointer.startY;
+  return dx * dx + dy * dy > POINTER_SLOP_PX * POINTER_SLOP_PX;
+}
+
+export function handlePointer(
+  source: PointerSource,
+  phase: PointerPhase,
+  id: number,
+  x: number,
+  y: number,
+  button = 0,
+  buttons = 0,
+): void {
+  if (!root) return;
+  if (phase === "down") {
+    const target = hitTestPointer(x, y);
+    if (!target) return;
+    const focusTarget = firstFocusableAncestor(target);
+    if (focusTarget) focusNode(focusTarget);
+    const pointer: ActivePointer = {
+      source,
+      id,
+      target,
+      pressTarget: firstPressAncestor(target),
+      startX: x,
+      startY: y,
+      x,
+      y,
+      button,
+      buttons,
+      downFrame: frameIndex,
+      canceled: false,
+      longFired: false,
+    };
+    activePointers.set(id, pointer);
+    dispatchPointer("onPointerDown", target, pointer, "down", true);
+    return;
+  }
+
+  const pointer = activePointers.get(id);
+  if (!pointer) {
+    if (phase === "move") {
+      const target = hitTestPointer(x, y);
+      if (target) {
+        const hover: ActivePointer = {
+          source,
+          id,
+          target,
+          pressTarget: null,
+          startX: x,
+          startY: y,
+          x,
+          y,
+          button,
+          buttons,
+          downFrame: frameIndex,
+          canceled: false,
+          longFired: false,
+        };
+        dispatchPointer("onPointerMove", target, hover, "move", true);
+      }
+    }
+    return;
+  }
+
+  pointer.x = x;
+  pointer.y = y;
+  pointer.button = button;
+  pointer.buttons = buttons;
+  const inside = containsPoint(pointer.pressTarget ?? pointer.target, x, y);
+  if (!inside || pointerMovedPastSlop(pointer)) pointer.canceled = true;
+
+  if (phase === "move") {
+    dispatchPointer("onPointerMove", pointer.target, pointer, "move", inside);
+    return;
+  }
+  if (phase === "cancel") {
+    pointer.canceled = true;
+    dispatchPointer("onPointerCancel", pointer.target, pointer, "cancel", inside);
+    activePointers.delete(id);
+    return;
+  }
+  if (phase === "up") {
+    dispatchPointer("onPointerUp", pointer.target, pointer, "up", inside);
+    if (!pointer.canceled && !pointer.longFired && inside) {
+      firePressAt(pointer.pressTarget);
+    }
+    activePointers.delete(id);
+  }
+}
+
+function updateLongPresses(): void {
+  for (const pointer of activePointers.values()) {
+    if (pointer.longFired || pointer.canceled || !pointer.pressTarget?.onLongPress) continue;
+    if (frameIndex - pointer.downFrame < LONG_PRESS_FRAMES) continue;
+    if (!containsPoint(pointer.pressTarget, pointer.x, pointer.y)) {
+      pointer.canceled = true;
+      continue;
+    }
+    pointer.longFired = true;
+    dispatchPointer("onLongPress", pointer.pressTarget, pointer, "longpress", true);
+  }
 }
 
 /** Temporarily restrict d-pad traversal and CIRCLE press to a subtree. */
@@ -311,6 +613,8 @@ export function notifyDetached(node: NodeMirror): void {
  * once per frame from globalThis.frame (index.ts) before the renderer sweep.
  */
 export function handleFrame(buttons: number): void {
+  frameIndex++;
+  updateLongPresses();
   const pressed = buttons & ~prevButtons;
   prevButtons = buttons;
   if (pressed === 0) return;

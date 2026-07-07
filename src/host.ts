@@ -66,6 +66,11 @@ export interface HostOps {
   loadFontAtlas?(buf: Uint8Array): void;
   /** JS-side convenience; layout measures natively. → width in px. */
   measureText(str: string, fontSlot: number): number;
+  /** Host-private pointer hit-test helpers; absent on hosts without pointer input. */
+  __layoutX?(id: number): number;
+  __layoutY?(id: number): number;
+  __layoutW?(id: number): number;
+  __layoutH?(id: number): number;
 }
 
 export interface Host {
@@ -128,6 +133,33 @@ export function getOps(): HostOps {
 
 export function installFrameHandler(fn: (buttons: number) => void): void {
   (globalThis as { frame?: (buttons: number) => void }).frame = fn;
+}
+
+export type PointerSource = "mouse" | "touch" | "pen";
+export type PointerPhase = "down" | "move" | "up" | "cancel";
+
+export function installPointerHandler(
+  fn: (
+    source: PointerSource,
+    phase: PointerPhase,
+    id: number,
+    x: number,
+    y: number,
+    button: number,
+    buttons: number,
+  ) => void,
+): void {
+  (globalThis as {
+    __pocketjsPointer?: (
+      source: PointerSource,
+      phase: PointerPhase,
+      id: number,
+      x: number,
+      y: number,
+      button: number,
+      buttons: number,
+    ) => void;
+  }).__pocketjsPointer = fn;
 }
 
 // ---------------------------------------------------------------------------
